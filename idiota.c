@@ -271,6 +271,16 @@ static ota_status_t ota_update(ota_info *settings)
 
         if (0 != memcmp((void *) sha256_image, (void *) sha256_bin, SHA256_SIZE_BIN)) {
             OTA_PRINT("Downloaded SHA256 does not match downloaded binary");
+            OTA_PRINT("Current    : ");
+            for (int i = 0; i < SHA256_SIZE_BIN; i++) {
+                printf("%02x", sha256_bin[i]);
+            }
+            printf("\n");
+            OTA_PRINT("Downloaded : ");
+            for (int i = 0; i < SHA256_SIZE_BIN; i++) {
+                printf("%02x", sha256_image[i]);
+            }
+            printf("\n");
             err = OTA_SHA256_MISMATCH;
             break;
         }
@@ -363,7 +373,8 @@ bool ota_init(ota_info *_ota_settings)
         OTA_PRINT("ERROR: OTA init called twice");
         return false;
     }
-    OTA_PRINT("OTA init");
+    rboot_config conf = rboot_get_config();
+    OTA_PRINT("OTA init, currently running in slot %d", conf.current_rom);
 
     /** Node ID */
     if (!(_ota_settings->node_id || _ota_settings->node_type || _ota_settings->hw_rev)) {
@@ -411,13 +422,18 @@ bool ota_init(ota_info *_ota_settings)
         ota_settings = _ota_settings;
         get_req.server = ota_settings->server;
         get_req.port = ota_settings->port;
-        xTaskCreate(ota_task, "ota_task", 2*4096, ota_settings, 2, NULL);
+        if (pdPASS != xTaskCreate(ota_task, "ota_task", 4096, ota_settings, 4, NULL)) {
+            printf("Error: failed to create ota task\n");
+            return false;
+        }
         DEBUG_PRINT("Buffer size: %d", SECTOR_SIZE);
         char *cur_sha256 = 0;
+
         if (SYSPARAM_OK == sysparam_get_string("sys.sha256", &cur_sha256)) {
             OTA_PRINT("Current SHA256 is %s", cur_sha256);
             free(cur_sha256);
         }
+
         return true;
 
     } else {
